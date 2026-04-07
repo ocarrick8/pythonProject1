@@ -11,7 +11,7 @@ from matplotlib.colors import ListedColormap, BoundaryNorm
 
 
 # ============================================================
-# USER PARAMETERS
+# USER PARAMETERS test!
 # ============================================================
 
 SEED = 12345
