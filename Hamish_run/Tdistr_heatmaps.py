@@ -11,7 +11,7 @@ from matplotlib.colors import ListedColormap, BoundaryNorm
 
 
 # ============================================================
-# USER PARAMETERS test!
+# USER PARAMETERS
 # ============================================================
 
 SEED = 12345
@@ -30,17 +30,17 @@ THRESHOLDS = [0.20, 0.50, 0.80]
 FIT_MAX_FRACTION = 0.90
 
 # Heat-map axes
-MU_VALUES = np.array([0.1, 0.6, 1.0, 5])
-K_VALUES = np.array([6.0, 8.0, 10.0, 12])
+MU_VALUES = np.array([0.1, 0.3, 0.6, 1.0, 2.0])
+K_VALUES = np.array([2.0, 4.0, 6.0, 8.0, 10.0])
 
 # Repeats
-N_GRAPH_REALISATIONS = 1
-N_DYNAMIC_RUNS_PER_GRAPH = 150
-N_STATIC_RUNS_PER_BETA_PER_GRAPH = 80
+N_GRAPH_REALISATIONS = 5
+N_DYNAMIC_RUNS_PER_GRAPH = 120
+N_STATIC_RUNS_PER_BETA_PER_GRAPH = 60
 N_STATIC_RUNS_FINAL_PER_GRAPH = 120
 
 # Beta search grid
-BETA_EFF_GRID = np.arange(0.30, 0.51, 0.02)
+BETA_EFF_GRID = np.arange(0.30, 0.71, 0.04)
 
 # Time grids
 DT_OUT = 0.1
@@ -55,7 +55,7 @@ USE_MULTIPROCESSING = True
 N_PROCESSES = max(1, mp.cpu_count() - 1)
 
 # 2D geometric graph boundary condition
-PERIODIC_2DG = False
+PERIODIC_2DG = True
 
 
 # ============================================================
@@ -406,7 +406,9 @@ def run_many_static(pre, beta, n_runs, t_grid, thresholds, seed):
 # FIT BETA_EFF ONLY UP TO I/N = 0.9
 # ============================================================
 
-def fit_beta_eff_for_graph(pre, mu, beta_dynamic, beta_grid, seed_base, t_grid):
+def fit_beta_eff_for_graph(pre, graph_type, mu, beta_dynamic, beta_grid, seed_base):
+    t_grid = make_t_grid(graph_type)
+
     dyn_curves, _ = run_many_dynamic(
         pre=pre,
         beta=beta_dynamic,
@@ -417,6 +419,17 @@ def fit_beta_eff_for_graph(pre, mu, beta_dynamic, beta_grid, seed_base, t_grid):
         seed=seed_base + 1
     )
     mean_dyn = dyn_curves.mean(axis=0)
+
+    idx_cut = np.searchsorted(mean_dyn, FIT_MAX_FRACTION, side="left")
+
+    if idx_cut >= len(t_grid):
+        fit_mask = np.ones_like(t_grid, dtype=bool)
+    else:
+        fit_mask = np.zeros_like(t_grid, dtype=bool)
+        fit_mask[:idx_cut + 1] = True
+
+    t_fit = t_grid[fit_mask]
+    mean_dyn_fit = mean_dyn[fit_mask]
 
     best_beta = None
     best_obj = np.inf
@@ -431,12 +444,17 @@ def fit_beta_eff_for_graph(pre, mu, beta_dynamic, beta_grid, seed_base, t_grid):
             seed=seed_base + 1000 + i
         )
         mean_st = st_curves.mean(axis=0)
-        obj = np.trapezoid(np.abs(mean_dyn - mean_st), t_grid)
+        mean_st_fit = mean_st[fit_mask]
+
+        obj = np.trapz(np.abs(mean_dyn_fit - mean_st_fit), t_fit)
+
         if obj < best_obj:
             best_obj = obj
             best_beta = beta_eff
 
     return float(best_beta), mean_dyn
+
+
 # ============================================================
 # GRID POINT ANALYSIS
 # ============================================================
@@ -457,11 +475,11 @@ def analyse_one_grid_point(graph_type, mu, k_mean, global_seed):
 
         beta_eff, _ = fit_beta_eff_for_graph(
             pre=pre,
+            graph_type=graph_type,
             mu=mu,
             beta_dynamic=BETA_DYNAMIC,
             beta_grid=BETA_EFF_GRID,
-            seed_base=global_seed + 10000 * g_idx,
-            t_grid=t_grid
+            seed_base=global_seed + 10000 * g_idx
         )
         beta_effs.append(beta_eff)
 
